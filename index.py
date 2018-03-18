@@ -47,95 +47,88 @@ if input_directory is None or output_file_postings is None or output_file_dictio
 #    - word_tokenize is used because it performs better than our own algorithms, but
 #      it is too permissive as it lets many unwanted special characters through, so we
 #      separately sanitize it using our own regex.
-#    - A postings list is build in word_postings as { word: { doc_id, doc_id, ...} }.
-#      A set is used to deduplicate terms appearing multiple times in the same document.
-# 2. Posting list is written to postings.txt in alphabetical order with each posting appearing
-#    on its own line, and each document ID delimited by spaces.
-#    - Skip pointers are inserted after every sqrt(n) posting. They appear as 'doc_id:pointer',
-#      with the pointer pointing towards the index of the skip index
-#    - As the list is written the offset for each term appearing in the document is stored
-#      in word_offsets
-# 3. The dictionary file is written to dictionary.txt, with each term appearing alphabetically
-#    on their own line. The format is 'term offset frequency'.
+#    - A postings list is build in term_dictionary as { term: { doc_id: freq, doc_id: freq, ...} }.
+# 2. Posting list is written to `posting-file` in alphabetical order with each posting appearing
+#    on its own line, and each document ID delimited by spaces. Each document ID is followed by
+#    the term frequency in this document
+# 3. The dictionary file is written to `dictionary-file`, with each term appearing alphabetically
+#    on their own line. The format is 'term document_frequency offset'.
 
 
 # Create stemmer object
 ps = nltk.stem.PorterStemmer()
 
-# words is a set of (word, document_id)
-word_postings = defaultdict(set)
+# a dictionary of the form { term: { docid: freq } }
+term_dictionary = defaultdict(dict)
 
 all_doc_ids = sorted(map(int, os.listdir(input_directory)))
 
+doc_size = dict()
+
 for doc_id in all_doc_ids:
+
+    print "Trying to index doc {}...".format(doc_id)
     filepath = os.path.join(input_directory, str(doc_id))
+
     with open(filepath) as input_file:
         document_content = input_file.read()
-        for word in nltk.word_tokenize(document_content):
+        count = 0
+        for token in nltk.word_tokenize(document_content):
+            
             # Remove invalid characters (punctuations, special characters, etc.)
-            word = re.sub(INVALID_CHARS, "", word)
+            token = re.sub(INVALID_CHARS, "", token)
 
-            if not word:
+            if not token:
                 continue
 
             # Stem and lowercase the word
-            word = ps.stem(word.lower())
-            word_postings[word].add(doc_id)
+            term = ps.stem(token.lower())
 
+            if doc_id in term_dictionary[term]:
+                term_dictionary[term][doc_id] += 1
+                continue
+            term_dictionary[term][doc_id] = 1
+            count += 1
 
+        doc_size[doc_id] = count
+        input_file.close()
+
+# Formats the posting list for a specific term
+# - input: a posting of the form { doc_id: freq, doc_id: freq }
+# - return: a formated posting string with "doc_id:freq doc_id:freq"
 def format_posting_list(posting):
-    # Ensure the document IDs are sorted
-    posting = sorted(posting)
+    sorted_doc_ids = sorted(posting)
 
-    # Calculates the number of index per skip
-    skip = int(math.sqrt(len(posting)))
-
-    # Keep track of the next skip pointer index
-    next_index = 0
     posting_strings = []
 
-    for index, doc_id in enumerate(posting):
-        # If the current index is the next index, we reach a skip point
-        if index == next_index and index != len(posting) - 1:
-            # If the next skip point exceeds the total length, just let the next_index to be the last index
-            if index + skip >= len(posting):
-                next_index = len(posting) - 1
-            else:
-                next_index = index + skip
-
-            posting_strings.append("{}:{}".format(doc_id, next_index))
-        else:
-            posting_strings.append(str(doc_id))
+    for doc_id in sorted_doc_ids:
+        posting_strings.append("{}:{}".format(doc_id, posting[doc_id]))
 
     return " ".join(posting_strings) + "\n"
 
+sorted_terms = sorted(term_dictionary)
+term_offsets = dict()
 
-# Sort the words so that they appear in the dictionary in alphabetical order
-word_list = sorted(word_postings)
-word_offsets = {}
-
+# writes all the postings
 with open(output_file_postings, 'w') as posting_file:
-    # Keep track of the offset from the start of the file
     offset = 0
 
-    for word in word_list:
-        posting_list = format_posting_list(word_postings[word])
-        word_offsets[word] = offset
-        offset += len(posting_list)
+    for term in sorted_terms:
+        posting_string = format_posting_list(term_dictionary[term])
+        term_offsets[term] = offset
+        offset += len(posting_string)
 
-        # writes into posting
-        posting_file.write(posting_list)
+        posting_file.write(posting_string)
 
-    # This is to add all postings (a posting of all existing doc ids)
-    posting_file.write(format_posting_list(all_doc_ids))
+    posting_file.write(format_posting_list(doc_size))
     posting_file.close()
 
-# writes into dictionary
-# add this offset for the last posting (all postings)
+# writes all the terms
 with open(output_file_dictionary, 'w') as dictionary_file:
     dictionary_file.write(str(offset) + "\n")
 
-    for word in word_list:
-        dictionary_file.write("{} {} {}\n".format(word, word_offsets[word], len(word_postings[word])))
+    for term in sorted_terms:
+        dictionary_string = "{} {} {}\n".format(term, len(term_dictionary[term]), term_offsets[term])
+        dictionary_file.write(dictionary_string)
 
     dictionary_file.close()
