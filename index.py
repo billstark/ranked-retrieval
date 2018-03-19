@@ -6,7 +6,7 @@ import getopt
 import math
 import os
 from config import *
-from collections import defaultdict
+from collections import defaultdict, Counter
 
 
 def usage():
@@ -60,22 +60,20 @@ if input_directory is None or output_file_postings is None or output_file_dictio
 ps = nltk.stem.PorterStemmer()
 
 # a dictionary of the form { term: { docid: freq } }
-term_dictionary = defaultdict(dict)
+term_dictionary = defaultdict(Counter)
 
 all_doc_ids = sorted(map(int, os.listdir(input_directory)))
 
 doc_size = dict()
 
 for doc_id in all_doc_ids:
-
     print "Trying to index doc {}...".format(doc_id)
     filepath = os.path.join(input_directory, str(doc_id))
 
     with open(filepath) as input_file:
         document_content = input_file.read()
-        count = 0
+        unique_terms = 0
         for token in nltk.word_tokenize(document_content):
-
             # Remove invalid characters (punctuations, special characters, etc.)
             token = re.sub(INVALID_CHARS, "", token)
 
@@ -85,13 +83,12 @@ for doc_id in all_doc_ids:
             # Stem and lowercase the word
             term = ps.stem(token.lower())
 
-            if doc_id in term_dictionary[term]:
-                term_dictionary[term][doc_id] += 1
-                continue
-            term_dictionary[term][doc_id] = 1
-            count += 1
+            if doc_id not in term_dictionary[term]:
+                unique_terms += 1
 
-        doc_size[doc_id] = count
+            term_dictionary[term][doc_id] += 1
+
+        doc_size[doc_id] = unique_terms
         input_file.close()
 
 
@@ -124,7 +121,6 @@ with open(output_file_postings, 'w') as posting_file:
         posting_file.write(posting_string)
 
     posting_file.write(format_posting_list(doc_size))
-    posting_file.close()
 
 # writes all the terms
 with open(output_file_dictionary, 'w') as dictionary_file:
@@ -133,5 +129,3 @@ with open(output_file_dictionary, 'w') as dictionary_file:
     for term in sorted_terms:
         dictionary_string = "{} {} {}\n".format(term, len(term_dictionary[term]), term_offsets[term])
         dictionary_file.write(dictionary_string)
-
-    dictionary_file.close()

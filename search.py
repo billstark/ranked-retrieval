@@ -5,7 +5,8 @@ import math
 import sys
 import getopt
 from config import *
-from operator import attrgetter, methodcaller
+from operator import attrgetter, methodcaller, itemgetter
+from collections import Counter
 
 
 def usage():
@@ -49,13 +50,13 @@ class Postings:
 
         self.postings_file.seek(offset)
         postings_string = self.postings_file.readline()
-        postings = dict()
+        postings = {}
         doc_set = set()
 
         for posting in postings_string.split():
-            doc_freq_pair = posting.split(':')
-            postings[int(doc_freq_pair[0])] = int(doc_freq_pair[1])
-            doc_set.add(int(doc_freq_pair[0]))
+            doc_id, doc_freq = map(int, posting.split(':'))
+            postings[doc_id] = doc_freq
+            doc_set.add(doc_id)
 
         if cache:
             self.parsed_postings[offset] = postings, doc_set
@@ -63,9 +64,7 @@ class Postings:
         return postings, doc_set
 
     def get_posting_and_doc_set(self, query_term):
-        """
-        Return the posting and document id set for a specific term.
-        """
+        """Return the posting and document id set for a specific term."""
         if query_term not in self.dictionary:
             return dict(), set()
 
@@ -73,7 +72,7 @@ class Postings:
         return self.parse_postings_and_doc_set(offset)
 
 
-def get_query_result(query, postings):
+def get_query_result(query, postings, count=10):
     """Given query and posting object, return the top-ten related results"""
     parsed_query = parse_query(query)
     temp_result = get_all_doc_with_score(parsed_query, postings)
@@ -83,14 +82,14 @@ def get_query_result(query, postings):
 
     # then sort by score
     temp_result = sorted(temp_result, key=lambda pair: pair[1], reverse=True)
-    result = map(lambda data: data[0], temp_result[:10])
-    return temp_result[:10]
+    result = map(itemgetter(0), temp_result[:count])
+    return result
 
 
 def parse_query(query):
     """Parses a query into { term: freq } mapping"""
 
-    result_dict = dict()
+    result_dict = Counter()
     for token in nltk.word_tokenize(query):
         # Remove invalid characters (punctuations, special characters, etc.)
         token = re.sub(INVALID_CHARS, "", token)
@@ -99,9 +98,7 @@ def parse_query(query):
             continue
 
         term = ps.stem(token.lower())
-        if term in result_dict:
-            result_dict[term] += 1
-        result_dict[term] = 1
+        result_dict[term] += 1
     return result_dict
 
 
@@ -114,7 +111,7 @@ def get_all_doc_with_score(parsed_query, postings):
     # parse all the terms
     query_terms = parsed_query.keys()
 
-    # calcualte the ltc based on terms
+    # Calculate the ltc based on terms
     ltc_list = calculate_query_ltc(parsed_query, query_terms, postings)
 
     # here is a small optimization, I get all the related documents (contains at least
@@ -123,7 +120,7 @@ def get_all_doc_with_score(parsed_query, postings):
 
     result = list()
 
-    # calcualte scores one by one
+    # Calculate scores one by one
     for doc_id in related_docs:
         result.append((doc_id, calculate_doc_score(doc_id, query_terms, postings, ltc_list)))
 
@@ -168,7 +165,7 @@ def calculate_doc_lnc(doc_id, query_terms, postings):
 
         # gets the tf and calculate log
         lnc_list.append(1 + math.log(posting[doc_id], 10))
-        sum_of_square += math.pow(lnc_list[index], 2)
+        sum_of_square += lnc_list[index] ** 2
 
     # do normalization
     lnc_list = map(lambda data: data / math.sqrt(sum_of_square), lnc_list)
@@ -182,12 +179,12 @@ def calculate_query_ltc(parsed_query, query_terms, postings):
     total_num_of_docs = len(postings.doc_sizes)
     for index, query_term in enumerate(query_terms):
 
-        # if the term even never exists in the dictionary, just skip
+        # Skip if the term does not even never appear in the dictionary
         if query_term not in postings.dictionary:
             ltc_list.append(0)
             continue
 
-        # else, calculate tf.idf and normalize it (which is not neccessary)
+        # else, calculate tf.idf and normalize it (which is not necessary)
         ltc_list.append(1 + math.log(parsed_query[query_term], 10))
         idf = math.log(total_num_of_docs / postings.dictionary[query_term][0], 10)
         ltc_list[index] *= idf
@@ -229,5 +226,5 @@ postings = Postings(postings_file, dictionary_file)
 get_query_result('tax operation', postings)
 
 for line in query_file:
-    result = get_query_result(line.stripe(), postings)
+    result = get_query_result(line.strip(), postings)
     output_file.write(" ".join(result) + "\n")
