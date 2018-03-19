@@ -8,6 +8,7 @@ import os
 from config import *
 from collections import defaultdict
 
+
 def usage():
     print "usage: " + sys.argv[0] + " -i directory-of-documents -d dictionary-file -p postings-file"
 
@@ -74,7 +75,7 @@ for doc_id in all_doc_ids:
         document_content = input_file.read()
         count = 0
         for token in nltk.word_tokenize(document_content):
-            
+
             # Remove invalid characters (punctuations, special characters, etc.)
             token = re.sub(INVALID_CHARS, "", token)
 
@@ -93,6 +94,7 @@ for doc_id in all_doc_ids:
         doc_size[doc_id] = count
         input_file.close()
 
+
 # Formats the posting list for a specific term
 # - input: a posting of the form { doc_id: freq, doc_id: freq }
 # - return: a formated posting string with "doc_id:freq doc_id:freq"
@@ -105,6 +107,7 @@ def format_posting_list(posting):
         posting_strings.append("{}:{}".format(doc_id, posting[doc_id]))
 
     return " ".join(posting_strings) + "\n"
+
 
 sorted_terms = sorted(term_dictionary)
 term_offsets = dict()

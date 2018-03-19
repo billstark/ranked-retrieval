@@ -11,8 +11,10 @@ from operator import attrgetter, methodcaller
 def usage():
     print "usage: " + sys.argv[0] + " -d dictionary-file -p postings-file -q file-of-queries -o output-file-of-results"
 
+
 # Create stemmer object
 ps = nltk.stem.PorterStemmer()
+
 
 class Postings:
     """Class used to interact with the posting and dictionary files"""
@@ -49,7 +51,7 @@ class Postings:
         postings_string = self.postings_file.readline()
         postings = dict()
         doc_set = set()
-        
+
         for posting in postings_string.split():
             doc_freq_pair = posting.split(':')
             postings[int(doc_freq_pair[0])] = int(doc_freq_pair[1])
@@ -70,10 +72,9 @@ class Postings:
         frequency, offset = self.dictionary[query_term]
         return self.parse_postings_and_doc_set(offset)
 
-"""
-Given query and posting object, return the top-ten related results
-"""
+
 def get_query_result(query, postings):
+    """Given query and posting object, return the top-ten related results"""
     parsed_query = parse_query(query)
     temp_result = get_all_doc_with_score(parsed_query, postings)
 
@@ -85,15 +86,15 @@ def get_query_result(query, postings):
     result = map(lambda data: data[0], temp_result[:10])
     return temp_result[:10]
 
-"""
-Parses a query into { term: freq } mapping
-"""
+
 def parse_query(query):
+    """Parses a query into { term: freq } mapping"""
+
     result_dict = dict()
     for token in nltk.word_tokenize(query):
         # Remove invalid characters (punctuations, special characters, etc.)
         token = re.sub(INVALID_CHARS, "", token)
-        
+
         if not token:
             continue
 
@@ -103,11 +104,12 @@ def parse_query(query):
         result_dict[term] = 1
     return result_dict
 
-"""
-Gets all the documents with their corresponding scores
-Result would be in the form of { doc_id: score }
-"""
+
 def get_all_doc_with_score(parsed_query, postings):
+    """Gets all the documents with their corresponding scores
+
+    Result would be in the form of { doc_id: score }
+    """
 
     # parse all the terms
     query_terms = parsed_query.keys()
@@ -124,24 +126,23 @@ def get_all_doc_with_score(parsed_query, postings):
     # calcualte scores one by one
     for doc_id in related_docs:
         result.append((doc_id, calculate_doc_score(doc_id, query_terms, postings, ltc_list)))
-    
+
     return result
 
-"""
-Gets a set of documents that contains at least one query term
-Returns a set of doc_id
-"""
+
 def get_query_related_doc_set(query_terms, postings):
+    """Gets a set of documents that contains at least one query term
+    Returns a set of doc_id
+    """
     result_set = set()
     for term in query_terms:
         _, doc_set = postings.get_posting_and_doc_set(term)
         result_set = result_set.union(doc_set)
     return result_set
 
-"""
-Calcuates the score for a specific document
-"""
+
 def calculate_doc_score(doc_id, query_terms, postings, query_ltc_list):
+    """Calculates the score for a specific document"""
     score = 0
 
     # gets the lnc for the document
@@ -152,10 +153,9 @@ def calculate_doc_score(doc_id, query_terms, postings, query_ltc_list):
         score += lnc_weight * query_ltc_list[index]
     return score / postings.doc_sizes[doc_id]
 
-"""
-Gets the lnc weights document-related terms
-"""
+
 def calculate_doc_lnc(doc_id, query_terms, postings):
+    """Gets the lnc weights document-related terms"""
     lnc_list = list()
     sum_of_square = 0
     for index, query_term in enumerate(query_terms):
@@ -167,17 +167,16 @@ def calculate_doc_lnc(doc_id, query_terms, postings):
             continue
 
         # gets the tf and calculate log
-        lnc_list.append(1 + math.log(posting[doc_id], 10)) 
+        lnc_list.append(1 + math.log(posting[doc_id], 10))
         sum_of_square += math.pow(lnc_list[index], 2)
 
     # do normalization
     lnc_list = map(lambda data: data / math.sqrt(sum_of_square), lnc_list)
     return lnc_list
 
-"""
-Gets the ltc weights for query terms
-"""
+
 def calculate_query_ltc(parsed_query, query_terms, postings):
+    """Gets the ltc weights for query terms"""
     ltc_list = list()
     sum_of_square = 0
     total_num_of_docs = len(postings.doc_sizes)
