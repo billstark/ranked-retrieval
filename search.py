@@ -5,6 +5,7 @@ import math
 import sys
 import getopt
 import threading
+import heapq
 from common import tokenize
 from operator import attrgetter, methodcaller, itemgetter
 from collections import Counter
@@ -13,61 +14,6 @@ from pprint import pprint
 
 def usage():
     print "usage: " + sys.argv[0] + " -d dictionary-file -p postings-file -q file-of-queries -o output-file-of-results"
-
-class DocScoreHeap:
-
-    def __init__ (self):
-        self.heap = []
-        self.size = 0
-
-    def push(self, doc_score_pair):
-        index = self.size
-        self.heap.append(doc_score_pair)
-        self.__swap_up(index)
-        self.size += 1
-
-    def pop(self):
-        if self.size <= 0:
-            return ()
-        self.heap[0], self.heap[self.size - 1] = self.heap[self.size - 1], self.heap[0]
-        data = self.heap[self.size - 1]
-        del self.heap[-1]
-        self.size -= 1
-        self.__swap_down(0)
-        return data
-
-    def __swap_up(self, index):
-        while index > 0:
-            parent_index = int((index - 1) / 2)
-            if self.heap[index][1] < self.heap[parent_index][1] or (self.heap[index][1] == self.heap[parent_index][1] and self.heap[index][0] > self.heap[parent_index][0]):
-                return
-            self.heap[index], self.heap[parent_index] = self.heap[parent_index], self.heap[index]
-            index = parent_index
-
-    def __swap_down(self, index):
-        while index <= int((len(self.heap) - 2) / 2):
-            max_child = self.__max_child(index)
-            if self.heap[index][1] > self.heap[max_child][1] or (self.heap[index][1] == self.heap[max_child][1] and self.heap[index][0] < self.heap[max_child][0]):
-                return
-            self.heap[index], self.heap[max_child] = self.heap[max_child], self.heap[index]
-            index = max_child
-
-    def __max_child(self, index):
-        left_child = 2 * index + 1
-        right_child = 2 * index + 2
-        if right_child > self.size - 1:
-            return left_child
-
-        if self.heap[left_child][1] > self.heap[right_child][1]:
-            return left_child
-
-        if self.heap[left_child][1] < self.heap[right_child][1]:
-            return right_child
-
-        if self.heap[left_child][0] > self.heap[right_child][0]:
-            return right_child
-
-        return left_child
 
 class Postings:
     """Class used to interact with the posting and dictionary files"""
@@ -131,10 +77,12 @@ def get_query_result(query, postings, count=10):
     """Given query and posting object, return the top-ten related results"""
     parsed_query = parse_query(query)
     get_all_doc_with_score(parsed_query, postings)
+    
     result_list = []
+    heapq.heapify(pq)
 
     for i in range(0, count):
-        result_list.append(pq.pop()[0])
+        result_list.append(heapq.heappop(pq)[1])
 
     return result_list
 
@@ -156,7 +104,7 @@ def calculate_splited_doc_score(doc_ids, query_terms, postings, ltc_list):
     for doc_id in doc_ids:
         score = calculate_doc_score(doc_id, query_terms, postings, ltc_list)
         doc_heap_lock.acquire()
-        pq.push((doc_id, score))
+        pq.append((-score, doc_id))
         doc_heap_lock.release()
 
 def get_all_doc_with_score(parsed_query, postings, num_of_threads=10):
@@ -279,7 +227,7 @@ if dictionary_file is None or postings_file is None or file_of_queries is None o
 # output_file = open(file_of_output, 'w')
 
 postings = Postings(postings_file, dictionary_file)
-pq = DocScoreHeap()
+pq = []
 doc_heap_lock = threading.Lock()
 print(get_query_result('tax operation', postings))
 
