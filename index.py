@@ -5,7 +5,7 @@ import sys
 import getopt
 import math
 import os
-from config import *
+from common import tokenize
 from collections import defaultdict, Counter
 
 
@@ -56,9 +56,6 @@ if input_directory is None or output_file_postings is None or output_file_dictio
 #    on their own line. The format is 'term document_frequency offset'.
 
 
-# Create stemmer object
-ps = nltk.stem.PorterStemmer()
-
 # a dictionary of the form { term: { docid: freq } }
 term_dictionary = defaultdict(Counter)
 
@@ -73,23 +70,14 @@ for doc_id in all_doc_ids:
     with open(filepath) as input_file:
         document_content = input_file.read()
         unique_terms = 0
-        for token in nltk.word_tokenize(document_content):
-            # Remove invalid characters (punctuations, special characters, etc.)
-            token = re.sub(INVALID_CHARS, "", token)
 
-            if not token:
-                continue
-
-            # Stem and lowercase the word
-            term = ps.stem(token.lower())
-
+        for term in tokenize(document_content):
             if doc_id not in term_dictionary[term]:
                 unique_terms += 1
 
             term_dictionary[term][doc_id] += 1
 
         doc_size[doc_id] = unique_terms
-        input_file.close()
 
 
 # Formats the posting list for a specific term
@@ -107,7 +95,7 @@ def format_posting_list(posting):
 
 
 sorted_terms = sorted(term_dictionary)
-term_offsets = dict()
+term_offsets = {}
 
 # writes all the postings
 with open(output_file_postings, 'w') as posting_file:

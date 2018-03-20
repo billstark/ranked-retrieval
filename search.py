@@ -4,7 +4,7 @@ import nltk
 import math
 import sys
 import getopt
-from config import *
+from common import tokenize
 from operator import attrgetter, methodcaller, itemgetter
 from collections import Counter
 from pprint import pprint
@@ -12,10 +12,6 @@ from pprint import pprint
 
 def usage():
     print "usage: " + sys.argv[0] + " -d dictionary-file -p postings-file -q file-of-queries -o output-file-of-results"
-
-
-# Create stemmer object
-ps = nltk.stem.PorterStemmer()
 
 
 class Postings:
@@ -86,18 +82,7 @@ def get_query_result(query, postings, count=10):
 
 def parse_query(query):
     """Parses a query into { term: freq } mapping"""
-
-    result_dict = Counter()
-    for token in nltk.word_tokenize(query):
-        # Remove invalid characters (punctuations, special characters, etc.)
-        token = re.sub(INVALID_CHARS, "", token)
-
-        if not token:
-            continue
-
-        term = ps.stem(token.lower())
-        result_dict[term] += 1
-    return result_dict
+    return Counter(tokenize(query))
 
 
 def get_all_doc_with_score(parsed_query, postings):
@@ -112,8 +97,7 @@ def get_all_doc_with_score(parsed_query, postings):
     # Calculate the ltc based on terms
     ltc_list = calculate_query_ltc(parsed_query, query_terms, postings)
 
-    # here is a small optimization, I get all the related documents (contains at least
-    # one query term) to get result
+    # Small optimization: get all the related documents (contains at least one query term) to get result
     related_docs = get_query_related_doc_set(query_terms, postings)
 
     # Calculate scores one by one
@@ -149,8 +133,8 @@ def calculate_doc_lnc(doc_id, query_terms, postings):
     """Gets the lnc weights document-related terms"""
     lnc_list = []
     sum_of_square = 0
-    for index, query_term in enumerate(query_terms):
 
+    for index, query_term in enumerate(query_terms):
         # Get the posting for this specific term
         posting = postings.get_posting_and_doc_set(query_term)
         if doc_id not in posting:
