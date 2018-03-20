@@ -7,6 +7,7 @@ import getopt
 from config import *
 from operator import attrgetter, methodcaller, itemgetter
 from collections import Counter
+from pprint import pprint
 
 
 def usage():
@@ -21,13 +22,13 @@ class Postings:
     """Class used to interact with the posting and dictionary files"""
 
     def __init__(self, postings_filename, dictionary_filename):
-
         self.postings_file = open(postings_filename)
+
         # Cache parsed postings. If memory is tight, an LRU cache can be used instead.
-        self.parsed_postings = dict()
+        self.parsed_postings = {}
 
         # Read in the dictionary file
-        self.dictionary = dict()
+        self.dictionary = {}
 
         with open(dictionary_filename) as dictionary_file:
             doc_sizes_offset = int(dictionary_file.readline())
@@ -38,12 +39,11 @@ class Postings:
                 except ValueError:
                     pass
 
-        self.doc_sizes, _ = self.parse_postings_and_doc_set(doc_sizes_offset, cache=False)
+        self.doc_sizes = self.parse_postings_and_doc_set(doc_sizes_offset, cache=False)
 
     def parse_postings_and_doc_set(self, offset, cache=True):
-        """
-        Returns the posting and skip pointers from a given offset in the postings file.
-        Posting is returned as a list of document IDs, and skip pointer as a dictionary of index to index
+        """Returns the posting and documents set from a given offset in the postings file.
+        Posting is returned as a dictionary of document ID to the term's frequency in the document
         """
         if cache and offset in self.parsed_postings:
             return self.parsed_postings[offset]
@@ -51,24 +51,22 @@ class Postings:
         self.postings_file.seek(offset)
         postings_string = self.postings_file.readline()
         postings = {}
-        doc_set = set()
 
         for posting in postings_string.split():
             doc_id, doc_freq = map(int, posting.split(':'))
             postings[doc_id] = doc_freq
-            doc_set.add(doc_id)
 
         if cache:
-            self.parsed_postings[offset] = postings, doc_set
+            self.parsed_postings[offset] = postings
 
-        return postings, doc_set
+        return postings
 
     def get_posting_and_doc_set(self, query_term):
         """Return the posting and document id set for a specific term."""
         if query_term not in self.dictionary:
-            return dict(), set()
+            return dict()
 
-        frequency, offset = self.dictionary[query_term]
+        _, offset = self.dictionary[query_term]
         return self.parse_postings_and_doc_set(offset)
 
 
@@ -77,13 +75,13 @@ def get_query_result(query, postings, count=10):
     parsed_query = parse_query(query)
     temp_result = get_all_doc_with_score(parsed_query, postings)
 
-    # sort by id first
-    temp_result = sorted(temp_result, key=lambda pair: pair[0])
+    # Sort by id first
+    temp_result = sorted(temp_result, key=itemgetter(0))
 
-    # then sort by score
-    temp_result = sorted(temp_result, key=lambda pair: pair[1], reverse=True)
-    result = map(itemgetter(0), temp_result[:count])
-    return result
+    # Then sort by score
+    temp_result = sorted(temp_result, key=itemgetter(1), reverse=True)
+
+    return map(itemgetter(0), temp_result[:count])
 
 
 def parse_query(query):
@@ -116,14 +114,10 @@ def get_all_doc_with_score(parsed_query, postings):
 
     # here is a small optimization, I get all the related documents (contains at least
     # one query term) to get result
-    related_docs = list(get_query_related_doc_set(query_terms, postings))
-
-    result = list()
+    related_docs = get_query_related_doc_set(query_terms, postings)
 
     # Calculate scores one by one
-    for doc_id in related_docs:
-        result.append((doc_id, calculate_doc_score(doc_id, query_terms, postings, ltc_list)))
-
+    result = map(lambda doc_id: (doc_id, calculate_doc_score(doc_id, query_terms, postings, ltc_list)), related_docs)
     return result
 
 
@@ -133,8 +127,8 @@ def get_query_related_doc_set(query_terms, postings):
     """
     result_set = set()
     for term in query_terms:
-        _, doc_set = postings.get_posting_and_doc_set(term)
-        result_set = result_set.union(doc_set)
+        term_postings = postings.get_posting_and_doc_set(term)
+        result_set = result_set.union(term_postings.keys())
     return result_set
 
 
@@ -153,42 +147,42 @@ def calculate_doc_score(doc_id, query_terms, postings, query_ltc_list):
 
 def calculate_doc_lnc(doc_id, query_terms, postings):
     """Gets the lnc weights document-related terms"""
-    lnc_list = list()
+    lnc_list = []
     sum_of_square = 0
     for index, query_term in enumerate(query_terms):
 
-        # gets the posting for this specific term
-        posting, _ = postings.get_posting_and_doc_set(query_term)
+        # Get the posting for this specific term
+        posting = postings.get_posting_and_doc_set(query_term)
         if doc_id not in posting:
             lnc_list.append(0)
             continue
 
-        # gets the tf and calculate log
-        lnc_list.append(1 + math.log(posting[doc_id], 10))
+        # Gets the tf and calculate log
+        lnc_list.append(1 + math.log10(posting[doc_id]))
         sum_of_square += lnc_list[index] ** 2
 
-    # do normalization
+    # Do normalization
     lnc_list = map(lambda data: data / math.sqrt(sum_of_square), lnc_list)
     return lnc_list
 
 
 def calculate_query_ltc(parsed_query, query_terms, postings):
     """Gets the ltc weights for query terms"""
-    ltc_list = list()
+    ltc_list = []
     sum_of_square = 0
     total_num_of_docs = len(postings.doc_sizes)
-    for index, query_term in enumerate(query_terms):
 
+    for index, query_term in enumerate(query_terms):
         # Skip if the term does not even never appear in the dictionary
         if query_term not in postings.dictionary:
             ltc_list.append(0)
             continue
 
         # else, calculate tf.idf and normalize it (which is not necessary)
-        ltc_list.append(1 + math.log(parsed_query[query_term], 10))
-        idf = math.log(total_num_of_docs / postings.dictionary[query_term][0], 10)
+        ltc_list.append(1 + math.log10(parsed_query[query_term]))
+        idf = math.log10(total_num_of_docs / postings.dictionary[query_term][0])
         ltc_list[index] *= idf
-        sum_of_square += math.pow(ltc_list[index], 2)
+        sum_of_square += ltc_list[index] ** 2
 
     # this can be ignored. for now I just to the normalization
     ltc_list = map(lambda data: data / math.sqrt(sum_of_square), ltc_list)
@@ -223,7 +217,7 @@ query_file = open(file_of_queries)
 output_file = open(file_of_output, 'w')
 
 postings = Postings(postings_file, dictionary_file)
-get_query_result('tax operation', postings)
+print(get_query_result('tax operation', postings))
 
 for line in query_file:
     result = get_query_result(line.strip(), postings)
