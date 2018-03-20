@@ -13,6 +13,60 @@ from pprint import pprint
 def usage():
     print "usage: " + sys.argv[0] + " -d dictionary-file -p postings-file -q file-of-queries -o output-file-of-results"
 
+class DocScoreHeap:
+
+    def __init__ (self):
+        self.heap = []
+        self.size = 0
+
+    def push(self, doc_score_pair):
+        index = self.size
+        self.heap.append(doc_score_pair)
+        self.__swap_up(index)
+        self.size += 1
+
+    def pop(self):
+        if self.size <= 0:
+            return ()
+        self.heap[0], self.heap[self.size - 1] = self.heap[self.size - 1], self.heap[0]
+        data = self.heap[self.size - 1]
+        del self.heap[-1]
+        self.size -= 1
+        self.__swap_down(0)
+        return data
+
+    def __swap_up(self, index):
+        while index > 0:
+            parent_index = int((index - 1) / 2)
+            if self.heap[index][1] < self.heap[parent_index][1] or (self.heap[index][1] == self.heap[parent_index][1] and self.heap[index][0] > self.heap[parent_index][0]):
+                return
+            self.heap[index], self.heap[parent_index] = self.heap[parent_index], self.heap[index]
+            index = parent_index
+
+    def __swap_down(self, index):
+        while index <= int((len(self.heap) - 2) / 2):
+            max_child = self.__max_child(index)
+            if self.heap[index][1] > self.heap[max_child][1] or (self.heap[index][1] == self.heap[max_child][1] and self.heap[index][0] < self.heap[max_child][0]):
+                return
+            self.heap[index], self.heap[max_child] = self.heap[max_child], self.heap[index]
+            index = max_child
+
+    def __max_child(self, index):
+        left_child = 2 * index + 1
+        right_child = 2 * index + 2
+        if right_child > self.size - 1:
+            return left_child
+
+        if self.heap[left_child][1] > self.heap[right_child][1]:
+            return left_child
+
+        if self.heap[left_child][1] < self.heap[right_child][1]:
+            return right_child
+
+        if self.heap[left_child][0] > self.heap[right_child][0]:
+            return right_child
+
+        return left_child
 
 class Postings:
     """Class used to interact with the posting and dictionary files"""
@@ -75,16 +129,13 @@ class Postings:
 def get_query_result(query, postings, count=10):
     """Given query and posting object, return the top-ten related results"""
     parsed_query = parse_query(query)
-    temp_result = get_all_doc_with_score(parsed_query, postings)
+    result_pq = get_all_doc_with_score(parsed_query, postings)
+    result_list = []
 
-    # Sort by id first
-    temp_result = sorted(temp_result, key=itemgetter(0))
+    for i in range(0, count):
+        result_list.append(result_pq.pop()[0])
 
-    # Then sort by score
-    temp_result = sorted(temp_result, key=itemgetter(1), reverse=True)
-
-    return map(itemgetter(0), temp_result[:count])
-
+    return result_list
 
 def parse_query(query):
     """Parses a query into { term: freq } mapping"""
@@ -97,6 +148,8 @@ def get_all_doc_with_score(parsed_query, postings):
     Result would be in the form of { doc_id: score }
     """
 
+    pq = DocScoreHeap()
+
     # parse all the terms
     query_terms = parsed_query.keys()
 
@@ -107,8 +160,10 @@ def get_all_doc_with_score(parsed_query, postings):
     related_docs = get_query_related_doc_set(query_terms, postings)
 
     # Calculate scores one by one
-    result = map(lambda doc_id: (doc_id, calculate_doc_score(doc_id, query_terms, postings, ltc_list)), related_docs)
-    return result
+    for doc_id in related_docs:
+        pq.push((doc_id, calculate_doc_score(doc_id, query_terms, postings, ltc_list)))
+
+    return pq
 
 
 def get_query_related_doc_set(query_terms, postings):
@@ -203,7 +258,7 @@ query_file = open(file_of_queries)
 output_file = open(file_of_output, 'w')
 
 postings = Postings(postings_file, dictionary_file)
-print(get_query_result('tax operation', postings))
+# print(get_query_result('tax operation', postings))
 
 for line in query_file:
     result = get_query_result(line.strip(), postings)
