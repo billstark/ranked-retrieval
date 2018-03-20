@@ -206,16 +206,13 @@ def normalize(lst):
     return map(lambda i: i / rms, lst)
 
 
-def calculate_doc_score(doc_id, query_terms, postings, query_ltc_list):
+def calculate_doc_score(doc_id, query_terms, postings, query_weights):
     """Calculates the score for a specific document"""
-    score = 0
-
     # gets the lnc for the document
-    lnc_list = calculate_doc_lnc(doc_id, query_terms, postings)
+    doc_weights = calculate_doc_lnc(doc_id, query_terms, postings)
 
     # then just do multiplication and divide the score by the doc size
-    for index, lnc_weight in enumerate(lnc_list):
-        score += lnc_weight * query_ltc_list[index]
+    score = sum(doc * query for doc, query in zip(doc_weights, query_weights))
     return score / postings.doc_sizes[doc_id]
 
 
