@@ -35,9 +35,9 @@ class Postings:
                 except ValueError:
                     pass
 
-        self.doc_sizes = self.parse_postings_and_doc_set(doc_sizes_offset, cache=False)
+        self.doc_sizes = self.parse_posting(doc_sizes_offset, cache=False)
 
-    def parse_postings_and_doc_set(self, offset, cache=True):
+    def parse_posting(self, offset, cache=True):
         """Returns the posting and documents set from a given offset in the postings file.
         Posting is returned as a dictionary of document ID to the term's frequency in the document
         """
@@ -57,13 +57,19 @@ class Postings:
 
         return postings
 
-    def get_posting_and_doc_set(self, query_term):
+    def __getitem__(self, item):
         """Return the posting and document id set for a specific term."""
-        if query_term not in self.dictionary:
+        if item not in self.dictionary:
             return dict()
 
-        _, offset = self.dictionary[query_term]
-        return self.parse_postings_and_doc_set(offset)
+        _, offset = self.dictionary[item]
+        return self.parse_posting(offset)
+
+    def __len__(self):
+        return len(self.dictionary)
+
+    def __contains__(self, item):
+        return item in self.dictionary
 
 
 def get_query_result(query, postings, count=10):
@@ -111,9 +117,14 @@ def get_query_related_doc_set(query_terms, postings):
     """
     result_set = set()
     for term in query_terms:
-        term_postings = postings.get_posting_and_doc_set(term)
+        term_postings = postings[term]
         result_set = result_set.union(term_postings.keys())
     return result_set
+
+
+def normalize(lst):
+    rms = math.sqrt(sum(i * i for i in lst))
+    return map(lambda i: i / rms, lst)
 
 
 def calculate_doc_score(doc_id, query_terms, postings, query_ltc_list):
@@ -132,45 +143,36 @@ def calculate_doc_score(doc_id, query_terms, postings, query_ltc_list):
 def calculate_doc_lnc(doc_id, query_terms, postings):
     """Gets the lnc weights document-related terms"""
     lnc_list = []
-    sum_of_square = 0
 
     for index, query_term in enumerate(query_terms):
         # Get the posting for this specific term
-        posting = postings.get_posting_and_doc_set(query_term)
+        posting = postings[query_term]
         if doc_id not in posting:
             lnc_list.append(0)
-            continue
-
-        # Gets the tf and calculate log
-        lnc_list.append(1 + math.log10(posting[doc_id]))
-        sum_of_square += lnc_list[index] ** 2
+        else:
+            # Gets the tf and calculate log
+            lnc_list.append(1 + math.log10(posting[doc_id]))
 
     # Do normalization
-    lnc_list = map(lambda data: data / math.sqrt(sum_of_square), lnc_list)
-    return lnc_list
+    return normalize(lnc_list)
 
 
 def calculate_query_ltc(parsed_query, query_terms, postings):
     """Gets the ltc weights for query terms"""
     ltc_list = []
-    sum_of_square = 0
-    total_num_of_docs = len(postings.doc_sizes)
+    total_num_of_docs = len(postings)
 
     for index, query_term in enumerate(query_terms):
-        # Skip if the term does not even never appear in the dictionary
-        if query_term not in postings.dictionary:
+        if query_term not in postings:
+            # Skip if the term does not even never appear in the dictionary
             ltc_list.append(0)
-            continue
-
-        # else, calculate tf.idf and normalize it (which is not necessary)
-        ltc_list.append(1 + math.log10(parsed_query[query_term]))
-        idf = math.log10(total_num_of_docs / postings.dictionary[query_term][0])
-        ltc_list[index] *= idf
-        sum_of_square += ltc_list[index] ** 2
+        else:
+            # Calculate tf.idf and normalize it (which is not necessary)
+            idf = math.log10(total_num_of_docs / postings.dictionary[query_term][0])
+            ltc_list.append((1 + math.log10(parsed_query[query_term])) * idf)
 
     # this can be ignored. for now I just to the normalization
-    ltc_list = map(lambda data: data / math.sqrt(sum_of_square), ltc_list)
-    return ltc_list
+    return normalize(ltc_list)
 
 
 dictionary_file = postings_file = file_of_queries = file_of_output = None
