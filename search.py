@@ -77,7 +77,7 @@ def get_query_result(query, postings, count=10):
     heapq.heapify(pq)
 
     results = []
-    for i in range(count):
+    while pq and len(results) < count:
         _, doc_id = heapq.heappop(pq)
         results.append(doc_id)
 
@@ -136,6 +136,8 @@ def get_query_related_doc_set(query_terms, postings):
 
 def normalize(lst):
     rms = math.sqrt(sum(i * i for i in lst))
+    if rms == 0:
+        return lst
     return map(lambda i: i / rms, lst)
 
 
