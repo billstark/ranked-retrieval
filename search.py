@@ -1,19 +1,16 @@
 #!/usr/bin/python
-import re
-import nltk
 import math
 import sys
 import getopt
-import threading
 import heapq
+from multiprocessing import Pool
 from common import tokenize
-from operator import attrgetter, methodcaller, itemgetter
 from collections import Counter
-from pprint import pprint
 
 
 def usage():
     print "usage: " + sys.argv[0] + " -d dictionary-file -p postings-file -q file-of-queries -o output-file-of-results"
+
 
 class Postings:
     """Class used to interact with the posting and dictionary files"""
@@ -76,19 +73,21 @@ class Postings:
 def get_query_result(query, postings, count=10):
     """Given query and posting object, return the top-ten related results"""
     parsed_query = parse_query(query)
-    get_all_doc_with_score(parsed_query, postings)
-    
-    result_list = []
+    pq = get_all_doc_with_score(parsed_query, postings)
     heapq.heapify(pq)
 
-    for i in range(0, count):
-        result_list.append(heapq.heappop(pq)[1])
+    results = []
+    for i in range(count):
+        _, doc_id = heapq.heappop(pq)
+        results.append(doc_id)
 
-    return result_list
+    return results
+
 
 def parse_query(query):
     """Parses a query into { term: freq } mapping"""
     return Counter(tokenize(query))
+
 
 def split_list(lst, num_of_parts):
     result = []
@@ -100,14 +99,8 @@ def split_list(lst, num_of_parts):
     result.append(piece)
     return result
 
-def calculate_splited_doc_score(doc_ids, query_terms, postings, ltc_list):
-    for doc_id in doc_ids:
-        score = calculate_doc_score(doc_id, query_terms, postings, ltc_list)
-        doc_heap_lock.acquire()
-        pq.append((-score, doc_id))
-        doc_heap_lock.release()
 
-def get_all_doc_with_score(parsed_query, postings, num_of_threads=10):
+def get_all_doc_with_score(parsed_query, postings):
     """Gets all the documents with their corresponding scores
 
     Result would be in the form of { doc_id: score }
@@ -122,20 +115,12 @@ def get_all_doc_with_score(parsed_query, postings, num_of_threads=10):
     # Small optimization: get all the related documents (contains at least one query term) to get result
     related_docs = get_query_related_doc_set(query_terms, postings)
 
-    # splits related docs into small blocks so that we could do multithreading
-    splited_docs = split_list(list(related_docs), num_of_threads)
+    pq = []
+    for doc_id in related_docs:
+        score = calculate_doc_score(doc_id, query_terms, postings, ltc_list)
+        pq.append((-score, doc_id))
 
-    threads = []
-
-    # for each data block, put it into a thead to calculate their scores
-    for splited_block in splited_docs:
-        calculate_thread = threading.Thread(target=calculate_splited_doc_score, args=(splited_block, query_terms, postings, ltc_list))
-        threads.append(calculate_thread)
-        calculate_thread.start()
-
-    # wait for all thread to complete the task
-    for thread in threads:
-        thread.join()
+    return pq
 
 
 def get_query_related_doc_set(query_terms, postings):
@@ -223,15 +208,17 @@ if dictionary_file is None or postings_file is None or file_of_queries is None o
     usage()
     sys.exit(2)
 
-query_file = open(file_of_queries)
-output_file = open(file_of_output, 'w')
+if __name__ == '__main__':
 
-postings = Postings(postings_file, dictionary_file)
-pq = []
-doc_heap_lock = threading.Lock()
-# print(get_query_result('tax operation', postings))
+    query_file = open(file_of_queries)
+    output_file = open(file_of_output, 'w')
 
-for line in query_file:
-    result = get_query_result(line.strip(), postings)
-    result = map(lambda doc_id: str(doc_id), result)
-    output_file.write(" ".join(result) + "\n")
+    pool = Pool(processes=4)
+
+    postings = Postings(postings_file, dictionary_file)
+    print(get_query_result('tax operation', postings))
+
+    for line in query_file:
+        result = get_query_result(line.strip(), postings)
+        result = map(lambda doc_id: str(doc_id), result)
+        output_file.write(" ".join(result) + "\n")
