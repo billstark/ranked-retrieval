@@ -223,14 +223,15 @@ if dictionary_file is None or postings_file is None or file_of_queries is None o
     usage()
     sys.exit(2)
 
-# query_file = open(file_of_queries)
-# output_file = open(file_of_output, 'w')
+query_file = open(file_of_queries)
+output_file = open(file_of_output, 'w')
 
 postings = Postings(postings_file, dictionary_file)
 pq = []
 doc_heap_lock = threading.Lock()
-print(get_query_result('tax operation', postings))
+# print(get_query_result('tax operation', postings))
 
-# for line in query_file:
-#     result = get_query_result(line.strip(), postings)
-#     output_file.write(" ".join(result) + "\n")
+for line in query_file:
+    result = get_query_result(line.strip(), postings)
+    result = map(lambda doc_id: str(doc_id), result)
+    output_file.write(" ".join(result) + "\n")
