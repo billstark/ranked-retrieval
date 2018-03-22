@@ -3,7 +3,6 @@ import math
 import sys
 import getopt
 import heapq
-from multiprocessing import Pool
 from common import tokenize
 from collections import Counter
 
@@ -55,6 +54,11 @@ class Postings:
 
         return postings
 
+    def get_freq(self, term):
+        if term not in self.dictionary:
+            return 0
+        return self.dictionary[term][0]
+
     def __getitem__(self, item):
         """Return the posting and document id set for a specific term."""
         if item not in self.dictionary:
@@ -87,17 +91,6 @@ def get_query_result(query, postings, count=10):
 def parse_query(query):
     """Parses a query into { term: freq } mapping"""
     return Counter(tokenize(query))
-
-
-def split_list(lst, num_of_parts):
-    result = []
-    size = int(len(lst) / num_of_parts)
-    while len(lst) > size:
-        piece = lst[:size]
-        result.append(piece)
-        lst = lst[size:]
-    result.append(piece)
-    return result
 
 
 def get_all_doc_with_score(parsed_query, postings):
@@ -178,12 +171,11 @@ def calculate_query_ltc(parsed_query, query_terms, postings):
             # Skip if the term does not even never appear in the dictionary
             ltc_list.append(0)
         else:
-            # Calculate tf.idf and normalize it (which is not necessary)
-            idf = math.log10(total_num_of_docs / postings.dictionary[query_term][0])
+            # Calculate tf.idf
+            idf = math.log10(total_num_of_docs / postings.get_freq(query_term))
             ltc_list.append((1 + math.log10(parsed_query[query_term])) * idf)
 
-    # this can be ignored. for now I just to the normalization
-    return normalize(ltc_list)
+    return ltc_list
 
 
 dictionary_file = postings_file = file_of_queries = file_of_output = None
@@ -211,16 +203,10 @@ if dictionary_file is None or postings_file is None or file_of_queries is None o
     sys.exit(2)
 
 if __name__ == '__main__':
+    with open(file_of_queries) as query_file, open(file_of_output, 'w') as output_file:
+        postings = Postings(postings_file, dictionary_file)
 
-    query_file = open(file_of_queries)
-    output_file = open(file_of_output, 'w')
-
-    pool = Pool(processes=4)
-
-    postings = Postings(postings_file, dictionary_file)
-    print(get_query_result('tax operation', postings))
-
-    for line in query_file:
-        result = get_query_result(line.strip(), postings)
-        result = map(lambda doc_id: str(doc_id), result)
-        output_file.write(" ".join(result) + "\n")
+        for line in query_file:
+            result = get_query_result(line.strip(), postings)
+            result = map(lambda doc_id: str(doc_id), result)
+            output_file.write(" ".join(result) + "\n")

@@ -16,42 +16,26 @@ Procedure:
 
   1. For every training file, load the whole content into the system and tokenize into words
   2. Remove invalid characters of the tokenized word
-  3. Add the word into the posting list
-  4. Format postings and add skip pointers every sqrt(n) postings.
-  5. Write postings into the posting file
-  6. Write terms into dictionary file with offset to the corresponding postings.
+  3. Count the term in a dictionary mapping document id to a term frequency counter
+  4. Write postings into the posting file
+  5. Write terms into dictionary file with offset to the corresponding postings.
 
 Notes:
 
-  1. We choose not to use sentence tokenizer because we are handle invalid punctuation by keeping only
+  - We choose not to use sentence tokenizer because we are handle invalid punctuation by keeping only
      digits, alphabets, white spaces and dashes
-  2. We are using set to remove duplicated document IDs
-  3. the posting is in the format of `docId:pointer` if there is a skip pointer, or just `docId`
-     if there isn't. Postings are delimited by space
-  5. We write a posting with all file names at the end of the posting file just for NOT operation
-  6. At the first line in the dictionary file we write the offset for all postings
 
 Searching:
  - The entire dictionary is read into memory
- - The query is parsed into an AST using Dijkstra's Shunting-yard Algorithm. Some simple
-   optimization is applied, such as
-    - Removing NOT NOT (as these do not have any effect)
-    - Turning (NOT a OR NOT b) into NOT (a AND b), which is likely to be faster
- - The AST is recursively "collapsed" as we walk down to each operation node and apply them
-    - At the leaf nodes, we retrieve the posting from the file. The posting is then cached
-      so that repeated queries against the same terms do not need to hit the file system
-    - For each of the operations, we use O(n) time algorithm to merge the child posting lists
-      to produce a new posting list
- - These optimizations are applied to the merge algorithm for the AND operation
-    - Start with the shortest posting
-    - Use skip pointers if they are available
-    - When an AND NOT operation is detected, use set difference to improve computation performance
- - NOT and OR operations are implemented relatively naively as we do not see any easy optimizations
-
+ - Each query is tokenized using the same method as for indexing
+ - For each query term, we calculate their weights using 1 + log(tf)
+ - For every document that any of the query terms appear in, we calculate the total score using the query weight
+   and the document tf-idf
+ - We collect the top 10 documents using a priority queue and return the result
 
 == Files included with this submission ==
 
-config.py       - includes regex and some constants that will be used in index.py and search.py.
+common.py       - includes the tokenization function which is used for both index and search
 index.py        - indexing program that will be run to index all the training files.
 search.py       - searching program that will be used to execute queries in a specific file and give output.
 dictionary.txt  - a dictionary mapping terms to their location in the postings file
@@ -78,7 +62,4 @@ I suggest that I should be graded as follows:
 
 == References ==
 
-- Shunting-yard algorithm: https://en.wikipedia.org/wiki/Shunting-yard_algorithm
-- The Shunting-Yard Algorithm - Nathan Reed's coding blog: http://reedbeta.com/blog/the-shunting-yard-algorithm/
-- Introduction to Information Retrieval
-  - Faster postings list intersection via skip pointers
+- tf-idf

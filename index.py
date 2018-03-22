@@ -49,10 +49,10 @@ if input_directory is None or output_file_postings is None or output_file_dictio
 #      it is too permissive as it lets many unwanted special characters through, so we
 #      separately sanitize it using our own regex.
 #    - A postings list is build in term_dictionary as { term: { doc_id: freq, doc_id: freq, ...} }.
-# 2. Posting list is written to `posting-file` in alphabetical order with each posting appearing
+# 2. Posting list is written in alphabetical order with each posting appearing
 #    on its own line, and each document ID delimited by spaces. Each document ID is followed by
 #    the term frequency in this document
-# 3. The dictionary file is written to `dictionary-file`, with each term appearing alphabetically
+# 3. The dictionary file is written with each term appearing alphabetically
 #    on their own line. The format is 'term document_frequency offset'.
 
 
@@ -60,11 +60,10 @@ if input_directory is None or output_file_postings is None or output_file_dictio
 term_dictionary = defaultdict(Counter)
 
 all_doc_ids = sorted(map(int, os.listdir(input_directory)))
-
 doc_size = dict()
 
 for doc_id in all_doc_ids:
-    print "Trying to index doc {}...".format(doc_id)
+    print "Trying to index doc %s..." % doc_id
     filepath = os.path.join(input_directory, str(doc_id))
 
     with open(filepath) as input_file:
@@ -82,7 +81,7 @@ for doc_id in all_doc_ids:
 
 # Formats the posting list for a specific term
 # - input: a posting of the form { doc_id: freq, doc_id: freq }
-# - return: a formated posting string with "doc_id:freq doc_id:freq"
+# - return: a formatted posting string with "doc_id:freq doc_id:freq"
 def format_posting_list(posting):
     sorted_doc_ids = sorted(posting)
 
